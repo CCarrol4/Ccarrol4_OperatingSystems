@@ -15,7 +15,6 @@ Starting code for CSE 30341 Project 3 - Spring 2023
 #include "fractal.h"
 
 
-
 /*
 Compute the number of iterations at point x, y
 in the complex space, up to a maximum of maxiter.
