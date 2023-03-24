@@ -29,6 +29,8 @@ complex values.
 */
 
 
+
+
 static int compute_point( double x, double y, int max )
 {
 double complex z = 0;
@@ -97,6 +99,7 @@ struct threadArg {
 	struct bitmap * pBitmap;
 	int rowMin;
 	int rowMax;
+	pthread_t tid;
 
 
 
@@ -105,14 +108,37 @@ struct threadArg {
 
 
 
+struct threadArg threadArr[8];
 
 
 
 
+struct task {
+
+	struct FractalSettings * pSettings;
+	struct bitmap * pBitmap;
+	pthread_t tid;
+
+	int rowMin;
+	int rowMax;
+	int colMin;
+	int colMax;
+
+	int taken; //0 for not 1 for taken
+
+
+	};
 
 
 
 
+//creating lock
+
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+
+
+
+struct task tasks[10000];
 
 
 
@@ -139,7 +165,7 @@ int i, j;
 
 	for(j=pThreadArg->rowMin; j<pThreadArg->rowMax; j++) {
 
-		printf("here");
+		//printf("here");
 
 		for(i=0; i<pThreadArg->pSettings->nPixelWidth; i++) {
 
@@ -183,10 +209,112 @@ bitmap_set(pThreadArg->pBitmap,i,j,gray);
 
 
 
-/* Process all of the arguments as provided as an input and appropriately modify
-the
-settings for the project
-@returns 1 if successful, 0 if unsuccessful (bad arguments) */
+
+
+
+
+
+
+//TASK//
+//		//
+//		//
+//TASK//
+
+
+
+void * compute_image_task (void * pThreadArg2){
+
+struct threadArg * pThreadArg = pThreadArg2;
+
+
+int width = pThreadArg->pSettings->nPixelWidth;
+int height = pThreadArg->pSettings->nPixelHeight;
+
+
+int numTasks = ((width*height)/400);
+
+
+
+	int ii = 0;
+
+	for(ii = 0; ii < numTasks; ii++){
+
+		pthread_mutex_lock(&lock);
+
+		if(tasks[ii].taken == 0){//not taken
+
+				tasks[ii].taken = 1;
+
+				pthread_mutex_unlock(&lock);
+
+
+					
+				
+int i, j;
+
+// For every pixel i,j, in the image...
+
+
+	for(j=tasks[ii].rowMin; j<tasks[ii].rowMax; j++) {
+
+		//printf("here");
+
+		for(i=tasks[ii].colMin; i<tasks[ii].colMax; i++) {
+
+
+// Scale from pixels i,j to coordinates x,y
+double x = pThreadArg->pSettings->fMinX + i*(pThreadArg->pSettings->fMaxX - pThreadArg->pSettings->fMinX) / pThreadArg->pSettings->nPixelWidth;
+double y = pThreadArg->pSettings->fMinY + j*(pThreadArg->pSettings->fMaxY - pThreadArg->pSettings->fMinY) / pThreadArg->pSettings->nPixelHeight;
+
+
+// Compute the iterations at x,y
+int iter = compute_point(x,y,pThreadArg->pSettings->nMaxIter);
+
+
+// Convert a iteration number to an RGB color.
+// (Change this bit to get more interesting colors.)
+int gray = 255 * iter / pThreadArg->pSettings->nMaxIter;
+// Set the particular pixel to the specific value
+// Set the pixel in the bitmap.
+bitmap_set(pThreadArg->pBitmap,i,j,gray);
+
+
+	}//endof col loop
+		}//endof row loop
+
+
+
+
+		}else{
+
+
+			pthread_mutex_unlock(&lock);
+
+	
+		}
+	
+
+
+	}
+
+
+
+
+
+
+
+
+	return NULL;
+
+
+}//endof tasks
+
+
+
+
+
+
+
 
 
 
@@ -223,6 +351,10 @@ char processArguments (int argc, char * argv[], struct FractalSettings * pSettin
 
 
 		if(strcmp(argv[i], "-help") == 0){
+
+
+			//ADD HELP
+
 		}	
 
 		else if(strcmp(argv[i], "-xmin") == 0){
@@ -246,6 +378,11 @@ char processArguments (int argc, char * argv[], struct FractalSettings * pSettin
 						}
 
 						pSettings->fMinX = xmin;
+						i++;
+
+			}else{
+
+			//ERROR
 
 			}
 
@@ -274,8 +411,14 @@ char processArguments (int argc, char * argv[], struct FractalSettings * pSettin
 						}
 
 						pSettings->fMaxX = xmax;
+						i++;
+
+			}else{
+
+			//ERROR
 
 			}
+
 
 
 		}
@@ -301,8 +444,14 @@ char processArguments (int argc, char * argv[], struct FractalSettings * pSettin
 						}
 
 						pSettings->fMinY = ymin;
+						i++;
+
+			}else{
+
+			//ERROR
 
 			}
+
 
 
 		}
@@ -328,8 +477,14 @@ char processArguments (int argc, char * argv[], struct FractalSettings * pSettin
 						}
 
 						pSettings->fMaxY = ymax;
+						i++;
+
+			}else{
+
+			//ERROR
 
 			}
+
 
 
 		}
@@ -355,8 +510,14 @@ char processArguments (int argc, char * argv[], struct FractalSettings * pSettin
 						}
 
 						pSettings->nMaxIter = maxiter;
+						i++;
+
+			}else{
+
+			//ERROR
 
 			}
+
 
 		}
 
@@ -380,8 +541,14 @@ char processArguments (int argc, char * argv[], struct FractalSettings * pSettin
 						}
 
 						pSettings->nPixelWidth = width;
+						i++;
+
+			}else{
+
+			//ERROR
 
 			}
+
 
 		}
 
@@ -406,8 +573,14 @@ char processArguments (int argc, char * argv[], struct FractalSettings * pSettin
 						}
 
 						pSettings->nPixelHeight = height;
+						i++;
+
+			}else{
+
+			//ERROR
 
 			}
+
 
 		}
 
@@ -423,6 +596,7 @@ char processArguments (int argc, char * argv[], struct FractalSettings * pSettin
 					
 	
 						strcpy(pSettings->szOutfile, argv[i + 1]);
+						i++;
 
 						
 
@@ -458,14 +632,22 @@ char processArguments (int argc, char * argv[], struct FractalSettings * pSettin
 						}
 
 						pSettings->nThreads = threads;
+						i++;
+
+			}else{
+
+			//ERROR
 
 			}
+
 
 
 		}
 
 
 	else if(strcmp(argv[i], "-row") == 0){
+
+		//printf("-row made it");	
 
 			pSettings->theMode = MODE_THREAD_ROW;
 
@@ -526,7 +708,7 @@ strncpy(theSettings.szOutfile, DEFAULT_OUTPUT_FILE, MAX_OUTFILE_NAME_LEN);
 
 
 
-
+//printf("starting...");
 
 
 
@@ -587,12 +769,15 @@ compute_image_singlethread(&theSettings, pBitmap);
 
 // Save the image in the stated file.
 if(!bitmap_save(pBitmap,theSettings.szOutfile)) {
-fprintf(stderr,"fractal: couldn't write to %s: %s\
-n",theSettings.szOutfile,strerror(errno));
+fprintf(stderr,"fractal: couldn't write to %s: %s\n",theSettings.szOutfile,strerror(errno));
 return 1;
 
 }
 }
+
+
+
+
 else if(theSettings.theMode == MODE_THREAD_ROW)
 {
 /* A row-based approach will not require any concurrency protection */
@@ -612,42 +797,45 @@ bitmap_reset(pBitmap,MAKE_RGBA(0,0,255,0));
 
 int k = 0;
 
-pthread_t pArray[8];
-
 
 for(k = 0; k < theSettings.nThreads; k++){
 
 	
- printf("here in main");
+ //printf("here in main");
 		
 //pSettings, pBitmap, rowMin, rowMax
-	struct threadArg * pThreadArg = {0};
-
-	pThreadArg->pSettings->fMinX = theSettings.fMinX;
-	pThreadArg->pSettings->fMaxX = theSettings.fMaxX;
-	pThreadArg->pSettings->fMinY = theSettings.fMinY;
-	pThreadArg->pSettings->fMaxY = theSettings.fMaxY;
-	pThreadArg->pSettings->nMaxIter = theSettings.nMaxIter;
-	pThreadArg->pSettings->nPixelWidth = theSettings.nPixelWidth;
-	pThreadArg->pSettings->nPixelHeight = theSettings.nPixelHeight;
-	strcpy(pThreadArg->pSettings->szOutfile, theSettings.szOutfile);
-	pThreadArg->pSettings->theMode = theSettings.theMode;
-	pThreadArg->pSettings->nThreads = theSettings.nThreads;
 
 
 
+	threadArr[k].pSettings = &theSettings;
 
 
-
-	pThreadArg->pBitmap = pBitmap;
-
-	pThreadArg->rowMin = ((theSettings.nPixelHeight / theSettings.nThreads) * k);
-	pThreadArg->rowMax = ((theSettings.nPixelHeight / theSettings.nThreads) * (k+1));
+	/*
+	threadArr[k].pSettings->fMinX = theSettings.fMinX;
+	threadArr[k].pSettings->fMaxX = theSettings.fMaxX;
+	threadArr[k].pSettings->fMinY = theSettings.fMinY;
+	threadArr[k].pSettings->fMaxY = theSettings.fMaxY;
+	threadArr[k].pSettings->nMaxIter = theSettings.nMaxIter;
+	threadArr[k].pSettings->nPixelWidth = theSettings.nPixelWidth;
+	threadArr[k].pSettings->nPixelHeight = theSettings.nPixelHeight;
+	strcpy(threadArr[k].pSettings->szOutfile, theSettings.szOutfile);
+	threadArr[k].pSettings->theMode = theSettings.theMode;
+	threadArr[k].pSettings->nThreads = theSettings.nThreads;
+	*/
 
 
 
 
-	if(pthread_create(&pArray[k], NULL, compute_image_multithread,(void *) pThreadArg ) != 0){
+
+	threadArr[k].pBitmap = pBitmap;
+
+	threadArr[k].rowMin = ((theSettings.nPixelHeight / theSettings.nThreads) * k);
+	threadArr[k].rowMax = ((theSettings.nPixelHeight / theSettings.nThreads) * (k+1));
+
+
+
+
+	if(pthread_create(&threadArr[k].tid, NULL, compute_image_multithread,(void *) &threadArr[k] ) != 0){
 		
 		//error, else continue
 
@@ -669,7 +857,7 @@ int l = 0;
 
 	for (l = 0; l < theSettings.nThreads; l++){
 
-		pthread_join(pArray[l], NULL);
+		pthread_join(threadArr[l].tid, NULL);
 
 	}
 
@@ -716,7 +904,134 @@ that shared data structure with all of the respective tasks.
 */
 
 
+
+
+
+
+
+
+struct bitmap * pBitmap = bitmap_create(theSettings.nPixelWidth,
+theSettings.nPixelHeight);
+
+
+bitmap_reset(pBitmap,MAKE_RGBA(0,0,255,0));
+
+
+
+int k = 0;
+
+
+for(k = 0; k < theSettings.nThreads; k++){
+
+	
+ //printf("here in main");
+		
+//pSettings, pBitmap, rowMin, rowMax
+
+
+
+	threadArr[k].pSettings = &theSettings;
+
+
+	/*
+	threadArr[k].pSettings->fMinX = theSettings.fMinX;
+	threadArr[k].pSettings->fMaxX = theSettings.fMaxX;
+	threadArr[k].pSettings->fMinY = theSettings.fMinY;
+	threadArr[k].pSettings->fMaxY = theSettings.fMaxY;
+	threadArr[k].pSettings->nMaxIter = theSettings.nMaxIter;
+	threadArr[k].pSettings->nPixelWidth = theSettings.nPixelWidth;
+	threadArr[k].pSettings->nPixelHeight = theSettings.nPixelHeight;
+	strcpy(threadArr[k].pSettings->szOutfile, theSettings.szOutfile);
+	threadArr[k].pSettings->theMode = theSettings.theMode;
+	threadArr[k].pSettings->nThreads = theSettings.nThreads;
+	*/
+
+
+
+
+
+	threadArr[k].pBitmap = pBitmap;
+
+
+	int m, n, taskcount;
+	taskcount = 0;
+
+	for(m=0; m<theSettings.nPixelHeight; m+=20) {
+for(n=0; n<theSettings.nPixelWidth; n+=20) {
+
+	tasks[taskcount].rowMin = m;
+	tasks[taskcount].rowMax = m+20;
+	tasks[taskcount].colMin = n;
+	tasks[taskcount].colMax = n+20;
+	
+	taskcount++;
 }
+}
+
+
+
+	if(pthread_create(&threadArr[k].tid, NULL, compute_image_task,(void *) &threadArr[k] ) != 0){
+		
+		//error, else continue
+
+		}
+
+	
+	
+
+	
+
+
+
+}//endof for
+
+
+
+	
+int l = 0;
+
+	for (l = 0; l < theSettings.nThreads; l++){
+
+		pthread_join(threadArr[l].tid, NULL);
+
+	}
+
+
+
+
+if(!bitmap_save(pBitmap,theSettings.szOutfile)) {
+fprintf(stderr,"fractal: couldn't write to %s: %s\
+n",theSettings.szOutfile,strerror(errno));
+return 1;
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}//endof task
 else
 {
 /* Uh oh - how did we get here? */
